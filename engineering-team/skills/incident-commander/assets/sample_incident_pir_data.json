@@ -1,0 +1,119 @@
+{
+  "incident_id": "INC-2026-0142",
+  "title": "Orders API Database Connection Pool Exhaustion",
+  "severity": "SEV1",
+  "status": "closed",
+  "pir_date": "2026-08-06",
+  "authors": [
+    "Marcus Odeya (Incident Commander)",
+    "Priya Nandakumar (Technical Lead)"
+  ],
+  "reviewers": [
+    "Engineering Leadership",
+    "SRE Team"
+  ],
+  "executive_summary": "A routine deployment introduced a database query missing a required index, which under normal traffic exhausted the connection pool for the orders database. This caused checkout and order-history failures for roughly 80% of active users for approximately 93 minutes, resolved by rolling back the deployment.",
+  "impact": {
+    "duration_minutes": 93,
+    "affected_users_percent": 80,
+    "affected_services": [
+      "orders-api",
+      "checkout-service",
+      "order-history-ui"
+    ],
+    "revenue_impact_estimate_usd": 42000,
+    "sla_violation": true,
+    "customer_support_tickets": 187
+  },
+  "key_metrics": {
+    "time_to_detect_minutes": 22,
+    "time_to_acknowledge_minutes": 3,
+    "time_to_declare_minutes": 5,
+    "time_to_mitigate_minutes": 36,
+    "time_to_resolve_minutes": 93
+  },
+  "timeline_summary": [
+    "14:10 - orders-api v2.14.0 deployed with new unindexed query",
+    "14:22 - Connection pool utilization warning alert fires",
+    "14:30 - Connection pool utilization critical alert fires",
+    "14:32 - On-call SRE paged as checkout begins returning 500 errors",
+    "14:36 - Incident declared SEV1, IC assigned",
+    "14:52 - Root cause identified: full table scans from missing index",
+    "15:02 - Rollback to v2.13.2 initiated",
+    "15:12 - Connection pool and latency return to baseline",
+    "16:05 - Incident resolved after validation period"
+  ],
+  "root_cause_analysis": {
+    "method": "5_whys",
+    "trigger": "Deployment of orders-api v2.14.0 introducing a new /orders/history query path.",
+    "root_cause": "Schema/query review process for the new deploy did not include a query-plan (EXPLAIN ANALYZE) check, so a query without a supporting index reached production.",
+    "five_whys": [
+      "Why did users see 500 errors? Because the API could not obtain a database connection.",
+      "Why couldn't it get a connection? Because the connection pool was exhausted.",
+      "Why was the pool exhausted? Because queries were taking far longer than normal, holding connections open.",
+      "Why were queries slow? Because a newly deployed query was performing a full table scan on the orders table.",
+      "Why did it perform a full table scan? Because there was no index on orders.customer_id supporting the new query.",
+      "Why was the index missing? Because code review for the new endpoint did not include a query-plan check as part of the merge checklist."
+    ],
+    "contributing_factors": [
+      "No automated query-plan linting in CI for new database access code",
+      "Connection pool had no hard ceiling/alerting margin between warning (80%) and critical (100%) thresholds, leaving little response buffer",
+      "No canary/staged rollout for orders-api; v2.14.0 went to 100% of traffic immediately"
+    ]
+  },
+  "what_went_well": [
+    "On-call SRE acknowledged the page within 3 minutes and declared the incident within 5 minutes of detection",
+    "Database SME correctly identified the full table scan via slow query logs within 16 minutes of investigation starting",
+    "IC chose rollback over a risky live index build under load, restoring service in 36 minutes",
+    "Status page was updated within the SEV1 15-minute communication window at each phase"
+  ],
+  "what_went_wrong": [
+    "The unindexed query was not caught in code review or CI before reaching production",
+    "No canary/staged rollout meant 100% of traffic was exposed immediately",
+    "Alerting thresholds (80% warning, 100% critical) left minimal buffer to react before user-facing impact began",
+    "Customer-facing communication described impact as 'a subset of users' when actual impact was approximately 80%"
+  ],
+  "action_items": [
+    {
+      "id": "AI-1",
+      "description": "Add automated EXPLAIN ANALYZE / query-plan check to CI for any PR modifying database access code touching the orders table.",
+      "owner": "Wei Chen",
+      "priority": "P0",
+      "due_date": "2026-08-13",
+      "status": "open"
+    },
+    {
+      "id": "AI-2",
+      "description": "Add missing index on orders.customer_id supporting the /orders/history query path.",
+      "owner": "Wei Chen",
+      "priority": "P0",
+      "due_date": "2026-08-07",
+      "status": "in_progress"
+    },
+    {
+      "id": "AI-3",
+      "description": "Introduce staged/canary rollout (10% -> 50% -> 100%) for orders-api deployments.",
+      "owner": "Priya Nandakumar",
+      "priority": "P1",
+      "due_date": "2026-08-20",
+      "status": "open"
+    },
+    {
+      "id": "AI-4",
+      "description": "Lower connection pool warning threshold to 60% and add a mid-tier 'elevated' alert to widen the reaction window.",
+      "owner": "Priya Nandakumar",
+      "priority": "P1",
+      "due_date": "2026-08-15",
+      "status": "open"
+    },
+    {
+      "id": "AI-5",
+      "description": "Update customer communication guidelines to require an impact-percentage estimate (even rough) in the first status page update for SEV1/SEV2 incidents.",
+      "owner": "Marcus Odeya",
+      "priority": "P2",
+      "due_date": "2026-08-25",
+      "status": "open"
+    }
+  ],
+  "lessons_learned": "Traffic-triggered failures often expose a latent design gap rather than being caused by the traffic itself; the connection pool had no headroom to absorb an unexpected latency increase from any source. Query-plan review needs to be enforced by tooling, not just review diligence, and rollout strategy should assume any single deploy can be the root cause until ruled out."
+}

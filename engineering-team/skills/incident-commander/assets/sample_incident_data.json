@@ -1,0 +1,67 @@
+{
+  "incident_id": "INC-2026-0142",
+  "title": "Orders API Database Connection Pool Exhaustion",
+  "severity": "SEV1",
+  "status": "resolved",
+  "detection_time": "2026-08-05T14:32:00Z",
+  "declared_time": "2026-08-05T14:36:40Z",
+  "mitigated_time": "2026-08-05T15:12:00Z",
+  "resolved_time": "2026-08-05T16:05:00Z",
+  "description": "Deployment of orders-api v2.14.0 introduced an unindexed query against the orders table, causing full table scans that held database connections open far longer than normal. Under normal traffic volume this exhausted the orders_db connection pool, resulting in HTTP 500 errors on checkout and order history for approximately 80% of active users.",
+  "affected_services": [
+    "orders-api",
+    "checkout-service",
+    "order-history-ui"
+  ],
+  "affected_users_percent": 80,
+  "business_impact": {
+    "level": "high",
+    "revenue_impact_estimate_usd": 42000,
+    "sla_violation": true,
+    "customer_support_tickets": 187
+  },
+  "root_cause": "New /orders/history query path deployed in v2.14.0 lacked a supporting index on orders.customer_id, causing full table scans that held database connections open, exhausting the orders_db connection pool under normal traffic.",
+  "trigger": "Deployment of orders-api v2.14.0 at 2026-08-05T14:10:00Z.",
+  "mitigation_actions": [
+    "Rolled back orders-api from v2.14.0 to v2.13.2",
+    "Verified connection pool utilization and query latency returned to baseline",
+    "Ran synthetic end-to-end checkout validation before declaring resolution"
+  ],
+  "response_team": {
+    "incident_commander": "Marcus Odeya",
+    "technical_lead": "Priya Nandakumar",
+    "scribe": "Devon Alcaraz",
+    "communications_lead": "Marcus Odeya",
+    "subject_matter_experts": [
+      "Wei Chen (Database)",
+      "Priya Nandakumar (SRE On-call)"
+    ]
+  },
+  "communications_sent": [
+    {
+      "timestamp": "2026-08-05T14:40:00Z",
+      "channel": "status_page",
+      "audience": "customers",
+      "message": "Investigating - Checkout and order history experiencing errors for a subset of users."
+    },
+    {
+      "timestamp": "2026-08-05T15:25:00Z",
+      "channel": "status_page",
+      "audience": "customers",
+      "message": "Monitoring - A fix has been applied and services are recovering. We are continuing to monitor."
+    },
+    {
+      "timestamp": "2026-08-05T16:08:00Z",
+      "channel": "status_page",
+      "audience": "customers",
+      "message": "Resolved - Checkout and order history are fully restored."
+    }
+  ],
+  "tags": [
+    "database",
+    "connection-pool",
+    "missing-index",
+    "bad-deploy",
+    "checkout"
+  ]
+}

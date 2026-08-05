@@ -1,0 +1,146 @@
+{
+  "incident_id": "INC-2026-0142",
+  "title": "Orders API Database Connection Pool Exhaustion",
+  "events": [
+    {
+      "timestamp": "2026-08-05T14:10:00Z",
+      "source": "deploy-log",
+      "actor": "ci-cd-pipeline",
+      "event_type": "deployment",
+      "description": "Deployed orders-api v2.14.0, including new /orders/history endpoint querying orders table by customer_id without a supporting index."
+    },
+    {
+      "timestamp": "2026-08-05T14:15:32Z",
+      "source": "apm",
+      "actor": "datadog-apm",
+      "event_type": "metric_anomaly",
+      "description": "p95 query latency on orders_db begins climbing from 40ms baseline to 400ms+ for queries touching the orders table."
+    },
+    {
+      "timestamp": "2026-08-05T14:22:10Z",
+      "source": "monitoring",
+      "actor": "datadog-alert",
+      "event_type": "alert",
+      "description": "Alert fired: 'orders_db connection pool utilization > 80%' (warning threshold)."
+    },
+    {
+      "timestamp": "2026-08-05T14:30:05Z",
+      "source": "monitoring",
+      "actor": "datadog-alert",
+      "event_type": "alert",
+      "description": "Alert fired: 'orders_db connection pool utilization = 100%, connections queuing' (critical threshold)."
+    },
+    {
+      "timestamp": "2026-08-05T14:31:47Z",
+      "source": "application-log",
+      "actor": "orders-api",
+      "event_type": "error_spike",
+      "description": "orders-api begins returning HTTP 500 errors on checkout and order-history requests due to connection pool timeouts."
+    },
+    {
+      "timestamp": "2026-08-05T14:32:00Z",
+      "source": "pagerduty",
+      "actor": "pagerduty",
+      "event_type": "detection",
+      "description": "PagerDuty escalation triggered to on-call SRE (Priya Nandakumar) for orders-api 5xx error rate SLO burn."
+    },
+    {
+      "timestamp": "2026-08-05T14:35:12Z",
+      "source": "slack",
+      "actor": "priya.nandakumar",
+      "event_type": "acknowledgement",
+      "description": "On-call SRE acknowledges page, confirms elevated 500 error rate (approx. 60% of checkout requests), begins triage in #incident-1142."
+    },
+    {
+      "timestamp": "2026-08-05T14:36:40Z",
+      "source": "slack",
+      "actor": "priya.nandakumar",
+      "event_type": "declaration",
+      "description": "Incident formally declared as SEV1 due to checkout unavailability for majority of users; Marcus Odeya assigned as Incident Commander."
+    },
+    {
+      "timestamp": "2026-08-05T14:40:00Z",
+      "source": "status-page",
+      "actor": "marcus.odeya",
+      "event_type": "communication",
+      "description": "Public status page updated: 'Investigating - Checkout and order history experiencing errors for a subset of users.'"
+    },
+    {
+      "timestamp": "2026-08-05T14:48:15Z",
+      "source": "slack",
+      "actor": "wei.chen",
+      "event_type": "investigation",
+      "description": "Database SME (Wei Chen) identifies via slow query log that /orders/history queries are performing full table scans on the orders table."
+    },
+    {
+      "timestamp": "2026-08-05T14:52:30Z",
+      "source": "slack",
+      "actor": "wei.chen",
+      "event_type": "root_cause_identified",
+      "description": "Confirmed root cause: v2.14.0 deploy introduced a query on orders.customer_id with no supporting index, causing full table scans that hold connections open far longer than normal, exhausting the connection pool under normal traffic."
+    },
+    {
+      "timestamp": "2026-08-05T14:55:00Z",
+      "source": "slack",
+      "actor": "marcus.odeya",
+      "event_type": "decision",
+      "description": "IC decides on rollback-first strategy: revert orders-api to v2.13.2 rather than attempt a live index build under load."
+    },
+    {
+      "timestamp": "2026-08-05T15:02:18Z",
+      "source": "deploy-log",
+      "actor": "ci-cd-pipeline",
+      "event_type": "mitigation",
+      "description": "Rollback of orders-api to v2.13.2 initiated."
+    },
+    {
+      "timestamp": "2026-08-05T15:09:45Z",
+      "source": "deploy-log",
+      "actor": "ci-cd-pipeline",
+      "event_type": "mitigation",
+      "description": "Rollback to v2.13.2 completed across all regions."
+    },
+    {
+      "timestamp": "2026-08-05T15:12:00Z",
+      "source": "monitoring",
+      "actor": "datadog-apm",
+      "event_type": "recovery_signal",
+      "description": "orders_db connection pool utilization drops from 100% to 45%; query p95 latency returns to ~45ms."
+    },
+    {
+      "timestamp": "2026-08-05T15:15:30Z",
+      "source": "application-log",
+      "actor": "orders-api",
+      "event_type": "recovery_signal",
+      "description": "HTTP 500 error rate on checkout and order-history endpoints drops below 1%."
+    },
+    {
+      "timestamp": "2026-08-05T15:20:00Z",
+      "source": "slack",
+      "actor": "priya.nandakumar",
+      "event_type": "validation",
+      "description": "Manual end-to-end checkout test succeeds in staging and production canary; no errors observed over 10 minutes of synthetic traffic."
+    },
+    {
+      "timestamp": "2026-08-05T15:25:00Z",
+      "source": "status-page",
+      "actor": "marcus.odeya",
+      "event_type": "communication",
+      "description": "Status page updated: 'Monitoring - A fix has been applied and services are recovering. We are continuing to monitor.'"
+    },
+    {
+      "timestamp": "2026-08-05T16:05:00Z",
+      "source": "slack",
+      "actor": "marcus.odeya",
+      "event_type": "resolution",
+      "description": "Incident declared resolved after 40 minutes of stable error rates and normal connection pool utilization."
+    },
+    {
+      "timestamp": "2026-08-05T16:08:00Z",
+      "source": "status-page",
+      "actor": "marcus.odeya",
+      "event_type": "communication",
+      "description": "Status page updated to 'Resolved'. Postmortem scheduled for 2026-08-06."
+    }
+  ]
+}
